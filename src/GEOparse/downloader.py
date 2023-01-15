@@ -20,7 +20,7 @@ except ImportError:
 class Downloader(object):
     """Downloader class."""
 
-    def __init__(self, url, outdir=None, filename=None):
+    def __init__(self, url, outdir=None, filename=None, progress_callback=None):
         self.url = url
         if outdir is None:
             self.outdir = os.getcwd()
@@ -30,6 +30,7 @@ class Downloader(object):
             self.filename = self._get_filename()
         else:
             self.filename = filename
+        self.progress_callback = progress_callback
 
         with tempfile.NamedTemporaryFile(delete=True) as tmpf:
             self._temp_file_name = tmpf.name
@@ -42,6 +43,20 @@ class Downloader(object):
         a user could change the outdir and filename dynamically.
         """
         return os.path.join(os.path.abspath(self.outdir), self.filename)
+
+    class Progress():
+        def __init__(self, callback, total_size, freq=1):
+            self.iter = 0
+            self.callback = callback
+            self.freq = freq 
+            self.current_size = 0
+            self.total_size = total_size 
+            
+        def add(self, chunk_size):
+            self.iter += 1
+            self.current_size += chunk_size
+            if self.iter % self.freq == 0:
+                self.callback(self.current_size/float(self.total_size))
 
     def download(self, force=False, silent=False):
         """Download from URL."""
@@ -151,14 +166,26 @@ class Downloader(object):
             if ftp_size is not None:
                 total_size = ftp_size
             wrote = list()  # cannot add in the callback, has to be a list
+            if self.progress_callback and total_size:
+                # execute progress_callback every 1000 iterations
+                progress = Downloader.Progress(self.progress_callback, total_size, 1000) 
+            else:
+                progress = None
             with open(self._temp_file_name, "wb") as f:
                 if silent:
 
                     def _write(data):
                         f.write(data)
                         wrote.append(len(data))
+                        
+                    def _write_progress(data):
+                        _write(data)
+                        progress.add(len(data))
 
-                    ftp.retrbinary("RETR %s" % parsed_url.path, _write)
+                    if progress:
+                        ftp.retrbinary("RETR %s" % parsed_url.path, _write_progress)
+                    else:
+                        ftp.retrbinary("RETR %s" % parsed_url.path, _write)
                 else:
                     with tqdm(
                         total=total_size,
@@ -173,8 +200,15 @@ class Downloader(object):
                             pbar.update(data_length)
                             f.write(data)
                             wrote.append(data_length)
-
-                        ftp.retrbinary("RETR %s" % parsed_url.path, _write)
+                            
+                        def _write_progress(data):
+                            _write(data)
+                            progress.add(len(data))
+                            
+                        if progress:
+                            ftp.retrbinary("RETR %s" % parsed_url.path, _write_progress)
+                        else:
+                            ftp.retrbinary("RETR %s" % parsed_url.path, _write)
             ftp.quit()
         except Exception:
             try:
@@ -201,14 +235,26 @@ class Downloader(object):
         logger.debug("Total size: %s" % total_size)
         md5_header = r.headers.get("Content-MD5")
         logger.debug("md5: %s" % str(md5_header))
+        if self.progress_callback and total_size:
+            progress = Downloader.Progress(self.progress_callback, total_size, 1000) 
+            logger.debug("Initializing download progress for file of size: %s via http" % total_size)
+        else:
+            progress = None
         chunk_size = 1024
         wrote = 0
         with open(self._temp_file_name, "wb") as f:
             if silent:
-                for chunk in r.iter_content(chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        wrote += len(chunk)
+                if progress:
+                    for chunk in r.iter_content(chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            progress.add(len(chunk))
+                    wrote += progress.current_size
+                else:
+                    for chunk in r.iter_content(chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            wrote += len(chunk)
             else:
                 with tqdm(
                     total=total_size,
@@ -217,11 +263,20 @@ class Downloader(object):
                     unit_divisor=1024,
                     leave=True,
                 ) as pbar:
-                    for chunk in r.iter_content(chunk_size):
-                        if chunk:
-                            f.write(chunk)
-                            pbar.update(len(chunk))
-                            wrote += len(chunk)
+                    if progress:
+                        for chunk in r.iter_content(chunk_size):
+                            if chunk:
+                                chunk_len = len(chunk)
+                                f.write(chunk)
+                                pbar.update(chunk_len)
+                                progress.add(chunk_len)
+                        wrote += progress.current_size
+                    else:
+                        for chunk in r.iter_content(chunk_size):
+                            if chunk:
+                                f.write(chunk)
+                                pbar.update(len(chunk))
+                                wrote += len(chunk)
         if total_size != 0:
             if wrote != total_size:
                 raise ValueError(

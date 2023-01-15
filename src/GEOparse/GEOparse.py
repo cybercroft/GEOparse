@@ -43,6 +43,7 @@ def get_GEO(
     aspera=False,
     partial=None,
     open_kwargs=None,
+    progress_callback=None,
 ):
     """Get the GEO entry.
 
@@ -73,6 +74,10 @@ def get_GEO(
             is a GPL.
         open_kwargs (:obj:'dict', optional): A dict of kwargs that will be
             passed to `utils.smart_open` function.
+        progress_callback (:obj:'callable', optional): A callback function
+            used to track download progress. This function should accept a 
+            single argument `percent`, which is a float between 0.0 and 1.0, 
+            where 1.0 signifies completion.            
 
 
     Returns:
@@ -101,6 +106,7 @@ def get_GEO(
             include_data=include_data,
             silent=silent,
             aspera=aspera,
+            progress_callback=progress_callback,
         )
     else:
         if geotype is None:
@@ -130,6 +136,7 @@ def get_GEO_file(
     include_data=False,
     silent=False,
     aspera=False,
+    progress_callback=None,
 ):
     """Download corresponding SOFT file given GEO accession.
 
@@ -222,7 +229,7 @@ def get_GEO_file(
             if not path.isfile(filepath):
                 try:
                     logger.info("Downloading %s to %s" % (url, filepath))
-                    utils.download_from_url(url, filepath, silent=silent, aspera=aspera)
+                    utils.download_from_url(url, filepath, silent=silent, aspera=aspera, progress_callback=progress_callback)
                     return filepath, geotype
                 except URLError:
                     logger.info(
@@ -251,7 +258,7 @@ def get_GEO_file(
             filepath = path.join(tmpdir, "{record}.txt".format(record=geo))
         if not path.isfile(filepath):
             logger.info("Downloading %s to %s" % (url, filepath))
-            utils.download_from_url(url, filepath, silent=silent, aspera=aspera)
+            utils.download_from_url(url, filepath, silent=silent, aspera=aspera, progress_callback=progress_callback)
         else:
             logger.info("File already exist: using local version.")
         return filepath, geotype
@@ -260,7 +267,7 @@ def get_GEO_file(
 
     if not path.isfile(filepath):
         logger.info("Downloading %s to %s" % (url, filepath))
-        utils.download_from_url(url, filepath, silent=silent, aspera=aspera)
+        utils.download_from_url(url, filepath, silent=silent, aspera=aspera, progress_callback=progress_callback)
     else:
         logger.info("File already exist: using local version.")
 

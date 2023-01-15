@@ -39,7 +39,7 @@ def mkdir_p(path_to_dir):
             raise e
 
 
-def download_from_url(url, destination_path, force=False, aspera=False, silent=False):
+def download_from_url(url, destination_path, force=False, aspera=False, silent=False, progress_callback=None):
     """Download file from remote server.
 
     If the file is already downloaded and  ``force`` flag is on the file will
@@ -71,6 +71,7 @@ def download_from_url(url, destination_path, force=False, aspera=False, silent=F
             url,
             outdir=os.path.dirname(destination_path),
             filename=os.path.basename(destination_path),
+            progress_callback=progress_callback,
         )
         if aspera:
             fn.download_aspera(
